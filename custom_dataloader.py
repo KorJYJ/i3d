@@ -21,9 +21,9 @@ def set_multi_label(label):
     """    
     if label ==0 :
         crash = 0
-        ego = None
-        weather = None
-        time = None
+        ego = -1
+        weather = -1
+        time = -1
     elif label == 1:
         crash =1 
         ego = 1
@@ -84,7 +84,10 @@ def set_multi_label(label):
         ego = 0
         weather = 2
         time = 1
-    return crash, ego, weather, time
+    return {'crash' : crash,
+            'ego' : ego,
+            'weather' : weather,
+            'time' : time}
     
 
 def get_label(multi_label):
@@ -122,7 +125,7 @@ class DaconDataset(Dataset):
             clip_length_in_frames=50,
             frames_between_clips = 1,
             frame_rate =10,
-            num_workers = 16,
+            num_workers = 8,
         )
         
         self.transform = transform
@@ -143,7 +146,7 @@ class DaconDataset(Dataset):
         # print(video.shape)
         label = self.labels[index]
 
-        label = set_multi_label(label)
+        # label = set_multi_label(label)
 
         return video, label
         # return video
@@ -160,7 +163,7 @@ def get_loader(data, label = None, transforms = None, batch_size=8):
         dataset=dataset,
         batch_size = batch_size,
         shuffle = True,
-        num_workers=16
+        num_workers=8
     )
     
     return dataset, dataloader

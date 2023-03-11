@@ -136,18 +136,11 @@ def run(init_lr=0.0001, max_steps=64e3, mode='rgb', root='/home/cho/Documents/da
         i3d = InceptionI3d(400, in_channels=3)
         i3d.load_state_dict(torch.load('models/rgb_imagenet.pt'))
 
-    i3d.replace_logits(50)
-    in_dim=1200
-    classifier = {"crash" : nn.DataParallel(Learner(in_dim, 2).cuda()),
-                  "ego" : nn.DataParallel(Learner(in_dim, 2).cuda()),
-                  "weather" : nn.DataParallel(Learner(in_dim, 3).cuda()),
-                  "time" : nn.DataParallel(Learner(in_dim, 2).cuda())}
-    
+    # i3d.replace_logits()      
     # i3d.replace_logits(157)
     # i3d.load_state_dict(torch.load('/home/cho092871/Documents/ckpt/dacon_img_300_resize_224/best.pt'))
     i3d.cuda()
     i3d = nn.DataParallel(i3d)
-    
     # optimizer = optim.SGD(i3d.parameters(), lr=CFG['LEARNING_RATE'])
     # optimizer = optim.SGD(i3d.parameters(), lr=CFG['LEARNING_RATE'], momentum=0.9, weight_decay=0.0000001)
     # lr_sched = optim.lr_scheduler.MultiStepLR(optimizer, [10, 100, 300], gamma=0.1)
@@ -208,88 +201,8 @@ def run(init_lr=0.0001, max_steps=64e3, mode='rgb', root='/home/cho/Documents/da
                     # label_crash, label_ego, label_weather, label_time  = Variable(crash.cuda()), Variable(ego.cuda()),Variable(weather.cuda()), Variable(time.cuda())
                     
                     # # with torch.cuda.amp.autocast(enabled=True):
-                    feature = i3d(inputs)
-                    out = classifier[data_type](feature)
-                    # # upsample to input size
-                    # per_frame_logits = F.upsample(per_frame_logits, t, mode='linear')
-
-                    # # compute localization loss
-                    # loc_loss = F.binary_cross_entropy_with_logits(per_frame_logits, labels)
-                    # tot_loc_loss += loc_loss.data[0]
-
-                    # # compute classification loss (with max-pooling along time B x C x T)
-                    # cls_loss = F.binary_cross_entropy_with_logits(torch.max(per_frame_logits, dim=2)[0], torch.max(labels, dim=2)[0])
-                    # tot_cls_loss += cls_loss.data[0]
-
-                    # loss = (0.5*loc_loss + 0.5*cls_loss)/num_steps_per_update
-                    loss = criterion(out, labels)
-                    # print(loss)
+                    out = i3d(inputs)
                     
-                    
-                    # loss_ego[label_crash ==0] = 0
-                    # loss_weather[label_crash ==0 ] = 0
-                    # loss_time[label_crash ==0 ] = 0
-                    
-                    # tot_crash_loss += loss_crash.item() 
-                    # tot_ego_loss += loss_ego.item()
-                    # tot_time_loss += loss_time.item()
-                    # tot_weather_loss += loss_weather.itme()
-
-                    
-                    # loss = criterion(output, labels)
-                    if phase == 'train':
-                        wandb.log({f'{data_type}_Train Iter Loss': loss})
-                        loss.backward()
-                        optimizer.step()
-                        optimizer.zero_grad()
-                    # scaler.scale(loss).backward()
-                    # scaler.step(optimizer)
-                    # scaler.update()
-                    # lr_sched.step()
-                    tot_loss.append(loss.item())
-                    preds += out.argmax(1).detach().cpu().numpy().tolist()
-                    
-                    trues += labels.detach().cpu().numpy().tolist()
-                    # if pred_crash ==1:
-                    #     trues_ego += label_ego.detach().cpu().numpy().tolist()
-                    #     trues_weather += label_weather.detach().cpu().numpy().tolist()
-                    #     trues_time += label_time.detach().cpu().numpy().tolist()
-                    
-                    if phase == 'train':
-                        steps += 1
-                        if steps % 10 == 0:            
-                            train_acc = accuracy_score(trues, preds)
-                            train_f1_score = f1_score(trues, preds, average='macro')
-                            
-                            print('{} Loss: {:.4f}, F1 score: {:.4f} Acc : {:.4f}'.format(phase, np.mean(tot_loss), train_f1_score , train_acc))
-                            
-
-
-                if phase == 'train':
-                    torch.save(i3d.module.state_dict(), os.path.join("/home/cho/Documents/ckpt", save_model, "base_model", f"{save_model}_{data_type}_{str(epoch).zfill(6)}"+'.pt'))
-                    torch.save(classifier[data_type].module.state_dict(), os.path.join("/home/cho/Documents/ckpt", save_model, data_type, f"{data_type}_{str(epoch).zfill(6)}"+'.pt'))
-                    train_acc = accuracy_score(trues, preds)
-                    train_f1_score = f1_score(trues, preds, average='macro')
-                    wandb.log({
-                        f"{data_type}_Train Loss" : np.mean(tot_loss),
-                        f'{data_type}_Train F1 Score' : train_f1_score, 
-                        f'{data_type}_Train Acc' : train_acc
-                    })
-                if phase == 'val':
-                    _val_acc = accuracy_score(trues, preds)
-                    _val_score = f1_score(trues, preds, average='macro')
-                    if best_score < _val_score:
-                        best_score = _val_score
-                        torch.save(i3d.module.state_dict(), os.path.join("/home/cho/Documents/ckpt", save_model, "base_model", "best.pt"))
-                        torch.save(classifier[data_type].module.state_dict(), os.path.join("/home/cho/Documents/ckpt", save_model, data_type, 'best.pt'))
-
-                    print('{} Valid F1 score: {:.4f}'.format(phase, _val_score ))
-                    wandb.log({
-                        f"{data_type}_Val ACC" : _val_acc,
-                        f"{data_type}_Valid Loss" : np.mean(tot_loss),
-                        f"{data_type}_Valid F1 score" : _val_score})
-        # lr_sched.step()
-            
 
 
     
@@ -300,10 +213,7 @@ if __name__ == '__main__':
     wandb.init(project="dacon")
     
     if not os.path.isdir(os.path.join("/home/cho/Documents/ckpt", args.save_model)):
-        os.makedirs(os.path.join("/home/cho/Documents/ckpt", args.save_model, "base_model"))
-        os.makedirs(os.path.join("/home/cho/Documents/ckpt", args.save_model, "crash"))
-        os.makedirs(os.path.join("/home/cho/Documents/ckpt", args.save_model, "ego"))
-        os.makedirs(os.path.join("/home/cho/Documents/ckpt", args.save_model, "weather"))
-        os.makedirs(os.path.join("/home/cho/Documents/ckpt", args.save_model, "time"))
+        os.makedirs(os.path.join("/home/cho/Documents/ckpt", args.save_model))
+        
     # need to add argparse
     run(mode=args.mode, root=args.root, save_model=args.save_model)
