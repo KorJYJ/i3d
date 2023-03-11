@@ -300,23 +300,51 @@ class InceptionI3d(nn.Module):
                              use_batch_norm=False,
                              use_bias=True,
                              name='logits')
+        
 
         
         self.build()
 
 
+
+
     def replace_logits(self, num_classes):
         self._num_classes = num_classes
-        self.logits = Unit3D(in_channels=384+384+128+128, output_channels=self._num_classes,
+        self.logits = Unit3D(in_channels=384+384+128+128, output_channels=50,
                              kernel_shape=[1, 1, 1],
-                             padding=0,
-                             activation_fn=None,
-                             use_batch_norm=False,
+                             padding=1,
+                             use_batch_norm=True,
                              use_bias=True,
                              name='logits')
         
-        self.prediction = nn.Linear(78, num_classes)
         
+        self.fc1 = nn.Linear(1200, 200)                 
+        self.relu = nn.ReLU()
+        self.fc_dropout = nn.Dropout(0.4)
+        self.prediction = nn.Linear(200, num_classes)
+        
+        
+        # self.linear1 = nn.Linear(78, 50)
+        # self.linear2 = nn.Linear(50, 50)
+
+    def multi_task(self):
+        def make_head(num_classes):
+            self.logits = Unit3D(in_channels=384+384+128+128, output_channels=128,
+                             kernel_shape=[1, 1, 1],
+                             padding=1,
+                             use_batch_norm=True,
+                             use_bias=True,
+                             name='logits')
+            self.fc1 = nn.Linear(40, num_classes)
+            
+            return nn.Sequential([self.logits, self.fc1])
+        
+        self.crash_head = make_head(2)
+        self.ego_head = make_head(2)
+        self.weather_head = make_head(3)
+        self.time_head = make_head(2)
+            
+            
         
     def build(self):
         for k in self.end_points.keys():
@@ -333,9 +361,19 @@ class InceptionI3d(nn.Module):
             logits = x.squeeze(3).squeeze(3)
         # logits is batch X time X classes, which is what we want to work with
         x = logits.view(batch_size, -1)
-
-        pred = self.prediction(x)
-        return pred
+        # x = self.linear1(x)
+        # x = self.linear2(x)
+        
+        # x = self.relu(self.fc1(x))
+        # x = self.fc_dropout(x)
+        # pred = self.prediction(x)
+        
+        crash = self.crash_head(x)
+        ego = self.ego_head(x)
+        weather = self.weather_head(x)
+        time = self.time_head(x)
+        
+        return crash, ego, weather, time
         
 
     def extract_features(self, x):
